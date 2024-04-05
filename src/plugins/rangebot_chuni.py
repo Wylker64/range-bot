@@ -8,12 +8,15 @@ from src.libraries.image import *
 from src.libraries.chuni_music import *
 from src.libraries.tool import hash
 from src.libraries.image import *
+from src.libraries.secrets import *
 
-import re
+import re,aiohttp,json
+
+DEFAULT_PRIORITY = 10
 
 chuni_music_jp = get_chuni_json()
 
-chuni_b40 = on_command('cb30', priority=10, block=True)
+chuni_b40 = on_command('cb30', priority = DEFAULT_PRIORITY, block=True)
 @chuni_b40.handle()
 async def _(event: Event, message: Message = CommandArg()):
     username = str(message).strip()
@@ -69,7 +72,7 @@ def inner_level_q(ds1, ds2=None):
     return result_set
 
 
-inner_level = on_command('cinner_level ', aliases={'c定数查歌 '}, priority=10, block=True)
+inner_level = on_command('cinner_level ', aliases={'c定数查歌 '}, priority = DEFAULT_PRIORITY, block=True)
 @inner_level.handle()
 async def _(event: Event, message: Message = CommandArg()):
     argv = str(message).strip().split(" ")
@@ -90,7 +93,7 @@ async def _(event: Event, message: Message = CommandArg()):
     await inner_level.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
 
-spec_rand = on_regex(r"^c随个(?:dx|sd|标准)?[绿黄红紫白]?[0-9]+\+?", priority=10, block=True)
+spec_rand = on_regex(r"^c随个(?:dx|sd|标准)?[绿黄红紫白]?[0-9]+\+?", priority = DEFAULT_PRIORITY, block=True)
 @spec_rand.handle()
 async def _(event: Event):
     # level_labels = ['绿', '黄', '红', '紫', '白']
@@ -109,13 +112,13 @@ async def _(event: Event):
     await spec_rand.finish(rand_result)
 
 
-mr = on_regex(r".*中二.*什么", priority=10, block=True)
+mr = on_regex(r".*中二.*什么", priority = DEFAULT_PRIORITY, block=True)
 @mr.handle()
 async def _():
     await mr.finish(song_txt(total_list.random()))
 
 
-search_music = on_regex(r"^c查歌.+",priority=10, block=True)
+search_music = on_regex(r"^c查歌.+",priority = DEFAULT_PRIORITY, block=True)
 @search_music.handle()
 async def _(event: Event):
     regex = "c查歌(.+)"
@@ -135,7 +138,7 @@ async def _(event: Event):
     else:
         await search_music.finish(f"结果过多（{len(res)} 条），请缩小查询范围。")
 
-crsearch_music = on_regex(r"^cr查歌.+",priority=10, block=True)
+crsearch_music = on_regex(r"^cr查歌.+",priority = DEFAULT_PRIORITY, block=True)
 @crsearch_music.handle()
 async def _(event: Event):
     regex = "cr查歌(.+)"
@@ -158,7 +161,7 @@ async def _(event: Event):
     else:
         await crsearch_music.finish(f"结果过多（{len(res)} 条），请缩小查询范围。")
 
-crid = on_regex(r"^crid ?([0-9]+)", priority=10, block=True)
+crid = on_regex(r"^crid ?([0-9]+)", priority = DEFAULT_PRIORITY, block=True)
 @crid.handle()
 async def _(event: Event):
     regex = "crid ?([0-9]+)"
@@ -170,7 +173,7 @@ async def _(event: Event):
 
 
 
-query_chart = on_regex(r"^c([绿黄红紫白]?)id ?([0-9]+)", priority=10, block=True)
+query_chart = on_regex(r"^c([绿黄红紫白]?)id ?([0-9]+)", priority = DEFAULT_PRIORITY, block=True)
 @query_chart.handle()
 async def _(event: Event):
     regex = "c([绿黄红紫白]?)id ?([0-9]+)"
@@ -202,34 +205,48 @@ async def _(event: Event):
         await query_chart.finish(song_txt(music))
 
 
-wm_list = ['推分', '越级', '下埋', '夜勤', '练底力','练手法', '打SUN', '干饭', '抓大J', '收歌', '扭头去打mai']
-jrzhe = on_command('今日中二', aliases={'今日chuni'}, priority=10, block=True)
-
-
+wm_list = ['拼机', '推分', '越级', '下埋', '夜勤', '练底力', '练手法', '干饭', '搓纵连', '收歌']
+jrzhe = on_command('今日中二', aliases={'今日chuni'}, priority = DEFAULT_PRIORITY, block=True)
 @jrzhe.handle()
 async def _(event: Event, message: Message = CommandArg()):
     qq = int(event.get_user_id())
     h = hash(qq)
+    dawumeng = (h >> 250)&1
+    dazhonger = (h >> 251)&1
+    dayinji = (h >> 252)&1
     rp = h % 100
+    h >>= 80
     wm_value = []
-    for i in range(11):
+    for i in range(len(wm_list)):
         wm_value.append(h & 3)
         h >>= 2
     s = f"今日人品值：{rp}\n"
-    for i in range(11):
+    for i in range(len(wm_list)):
         if wm_value[i] == 3:
             s += f'宜 {wm_list[i]}\n'
         elif wm_value[i] == 0:
             s += f'忌 {wm_list[i]}\n'
+    if dawumeng == 1:
+        s += "宜 打舞萌\n"
+    else:
+        s += "忌 打舞萌\n"
+    # if dazhonger == 1:
+    #     s += "宜 打中二\n"
+    # else:
+    #     s += "忌 打中二\n"
+    if dayinji == 1:
+        s += "宜 打音击\n"
+    else:
+        s += "忌 打音击\n"
     s += "然哥提醒您：打几把中二快去学习\n"
     music = total_list[h % len(total_list)]
     await jrzhe.finish(MessageSegment.text(s) + song_txt(music))
 
 
 """-----------谱师查歌&曲师查歌&新歌查歌&BPM查歌&版本查歌-----------"""
-hardlist = ['Basic', 'Advance', 'Expert', 'Master', 'Re:Master']
+hardlist = ['Basic', 'Advance', 'Expert', 'Master', 'ULTIMA', 'World End']
 
-ccharter_search = on_command('c谱师查歌', priority=10, block=True)
+ccharter_search = on_command('c谱师查歌', priority = DEFAULT_PRIORITY, block=True)
 @ccharter_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     charter = str(message).strip()
@@ -251,7 +268,7 @@ async def _(event: Event, message: Message = CommandArg()):
     await ccharter_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
 
-cartist_search = on_command('c曲师查歌', priority=10, block=True)
+cartist_search = on_command('c曲师查歌', priority = DEFAULT_PRIORITY, block=True)
 @cartist_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     artist = str(message).strip()
@@ -273,7 +290,7 @@ async def _(event: Event, message: Message = CommandArg()):
     await cartist_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
 
-cversion_search = on_command('c版本查歌', priority=10, block=True)
+cversion_search = on_command('c版本查歌', priority = DEFAULT_PRIORITY, block=True)
 @cversion_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     artist = str(message).strip()
@@ -295,7 +312,7 @@ async def _(event: Event, message: Message = CommandArg()):
     await cversion_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
 
-cbpm_search = on_command('cbpm查歌', aliases={"cBPM查歌", "cBpm查歌"}, priority=10, block=True)
+cbpm_search = on_command('cbpm查歌', aliases={"cBPM查歌", "cBpm查歌"}, priority = DEFAULT_PRIORITY, block=True)
 @cbpm_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     argv = str(message).strip().split(" ")
@@ -329,3 +346,76 @@ async def _(event: Event, message: Message = CommandArg()):
     elif k == 0:
         await cbpm_search.finish(f"没有找到结果，请检查搜索条件。")
     await cbpm_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
+
+
+cinfo = on_command('cinfo', priority = DEFAULT_PRIORITY, block=True)
+@cinfo.handle()
+async def _cinfo(event: Event, message: Message = CommandArg()):
+    msg = str(message).strip()
+    if msg == "":
+        await cinfo.finish("命令格式为\ncinfo <乐曲ID/部分乐曲名>\n暂不支持别名搜索")
+    id = None
+    try:
+        id = int(msg)
+    except:
+        pass
+    name = msg
+    qq = event.get_user_id()
+    async with aiohttp.request("GET","https://www.diving-fish.com/api/chunithmprober/dev/player/records",params={"qq":qq},headers={"developer-token":DF_Dev_Token})as resp:
+        if resp.status != 200:
+            await cinfo.finish("未找到此玩家，请确登陆https://www.diving-fish.com/chunithm/prober/录入分数，并正确填写用户名与QQ号。")
+        full_data = await resp.json()
+    res = []
+    for music in full_data['records']['best']:
+        if music['mid'] == id or name.lower() in music['title'].lower():
+            res.append(music)
+    if len(res) == 0:
+        await cinfo.finish("未找到此乐曲或该乐曲没打过。")
+    else:
+        s = "\n"
+        for music in res:
+            s += f"{music['mid']}. {music['title']} 【{music['level_label']} {music['ds']}】 {music['score']}\n"
+        await cinfo.finish(MessageSegment.at(qq) + MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
+
+clevelquery = on_regex(r"^c([0-9]+)([＋\+]?)(?:进度|完成表|完成度)$",priority = DEFAULT_PRIORITY, block = True)
+@clevelquery.handle()
+async def _clevelquery(event: Event):
+    regex = r"^c([0-9]+)([＋\+]?)(?:进度|完成表|完成度)$"
+    res = re.match(regex, str(event.get_message()))
+    level = int(res.group(1))
+    if (level > 15) or (level < 1):
+        await clevelquery.finish("蓝的盆")
+    plus = res.group(2)
+    if plus != "":
+        level += 0.5
+
+    qq = event.get_user_id()
+    async with aiohttp.request("GET","https://www.diving-fish.com/api/chunithmprober/dev/player/records",params={"qq":qq},headers={"developer-token":DF_Dev_Token})as resp:
+        if resp.status != 200:
+            await cinfo.finish("未找到此玩家，请确登陆https://www.diving-fish.com/chunithm/prober/录入分数，并正确填写用户名与QQ号。")
+        full_data = await resp.json()
+    
+    res = []
+    for music in full_data['records']['best']:
+        if level <= music['ds'] < level + 0.5:
+            res.append(music)
+    if len(res) == 0:
+        await clevelquery.finish("没有打过这个等级的乐曲")
+    else:
+        s = "\n"
+        for music in res:
+            s += f"{music['mid']}. {music['title']} 【{music['level_label']} {music['ds']}】 {music['score']}\n"
+        await clevelquery.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
+
+cajb30 = on_command('cajb30', priority = DEFAULT_PRIORITY, block=True)
+@cajb30.handle()
+async def _cajb30(event: Event, message: Message = CommandArg()):
+    if str(message).strip() != "":
+        return
+    qq = str(event.get_user_id())
+    async with aiohttp.request("GET","https://www.diving-fish.com/api/chunithmprober/dev/player/records",params={"qq":qq},headers={"developer-token":DF_Dev_Token})as resp:
+        if resp.status != 200:
+            await cajb30.finish("未找到此玩家，请确登陆https://www.diving-fish.com/chunithm/prober/录入分数，并正确填写用户名与QQ号。")
+        full_data = await resp.json()
+    img = await draw_ajb30(full_data,qq)
+    await cajb30.finish(MessageSegment.at(qq) + MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))

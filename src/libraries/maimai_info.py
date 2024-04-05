@@ -3,11 +3,12 @@ from src.libraries.maimaidx_music import Music
 from src.libraries.image import get_music_cover
 from src.libraries.maimaidx_music import compute_ra
 from src.libraries.static_lists_and_dicts import version_icon_path, genre_icon_path, level_index_to_file
+from src.libraries.tool import is_fools_day
 
 assets_path = "src/static/mai/newinfo/"
 cover_path = "src/static/mai/cover/"
 
-async def draw_new_info(record:dict,music:Music)->Image.Image:
+async def draw_new_info(record:dict,music:Music,plct = False)->Image.Image:
 
     diff_replace = {
         "Basic": "BSC",
@@ -147,7 +148,11 @@ async def draw_new_info(record:dict,music:Music)->Image.Image:
 
     # 分数
     font_score = ImageFont.truetype("src/static/MFZhiShang_Noncommercial-Regular.otf", 20,encoding="utf-8")
-    score_text = f"{achievement:>8.4f}".replace(" ","   ")
+
+    if is_fools_day():
+        score_text = f"{int(achievement*10000):>7d}".replace(" ","   ")
+    else:
+        score_text = f"{achievement:>8.4f}".replace(" ","   ")
     score_text += " %"
     temp_img = Image.new('RGBA', (font_score.getbbox(score_text)[2], font_score.getbbox(score_text)[3]), color = (0, 0, 0,0))
     temp_img_draw = ImageDraw.Draw(temp_img)
@@ -177,6 +182,14 @@ async def draw_new_info(record:dict,music:Music)->Image.Image:
     # BPM
     font_bpm = ImageFont.truetype("src/static/MFZhiShang_Noncommercial-Regular.otf", 16,encoding="utf-8")
     img_draw.text((290, 647), f"BPM  {bpm:03d}", font=font_bpm, fill=(0,0,0))
+
+    #游玩次数
+    if plct and "playCount" in record:
+        playcount = record["playCount"]
+        font_title_small = ImageFont.truetype("src/static/SourceHanSansCN-Bold.otf", 16,encoding="utf-8")
+        lens = font_title_small.getbbox(f"游玩次数：{playcount}")[2]
+        img_draw.text((380-lens+1, 66+1), f"游玩次数：{playcount}", font=font_title_small, fill=(255,255,255))
+        img_draw.text((380-lens, 66), f"游玩次数：{playcount}", font=font_title_small, fill=(0,0,0))
 
     return img
 

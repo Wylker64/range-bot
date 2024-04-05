@@ -1,21 +1,26 @@
-from nonebot import on_command, on_regex
+from nonebot import on_command, on_regex, on_message
 from nonebot.params import CommandArg
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
+from nonebot.matcher import Matcher
+from nonebot.rule import to_me
 
 from src.libraries.tool import offlineinit, convert_cn2jp
 from src.libraries.maimaidx_music import total_list, music_data, refresh_music_list, refresh_alias_temp
 from src.libraries.image import text_to_image, image_to_base64
 from src.libraries.maimai_best_40 import generate
-from src.libraries.maimai_best_50 import generate50, generateap50
+from src.libraries.maimai_best_50 import generate50, generateap50, generateb50_water_msg, generateb50_by_player_data
 from src.libraries.maimai_plate_query import *
 from src.libraries.secrets import *
 from src.libraries.maimai_info import draw_new_info
 from src.libraries.message_segment import song_MessageSegment2
 from src.libraries.static_lists_and_dicts import pnconvert, platename_to_file, level_index_to_file, ptv, versionlist
+from src.libraries.find_cover import find_cover_id
 
 from PIL import Image, ImageDraw, ImageFont
-import re,base64,random,os,json
+import re,base64,random,os,json,requests,io
+
+DEFAULT_PRIORITY = 10
 
 cover_dir = 'src/static/mai/cover/'
 long_dir_ = 'src/static/long/'
@@ -35,11 +40,13 @@ with open("src/static/musicGroup.json","r",encoding="utf-8") as f:
 #         if arr[i] != "":
 #             music_aliases[arr[i].lower()].append(arr[0])
 
-find_song = on_regex(r".+是什么歌$", priority = 10, block = True)
+find_song = on_regex(r".+是什么歌$", priority = DEFAULT_PRIORITY, block = True)
 @find_song.handle()
 async def _(event: Event):
     regex = "(.+)是什么歌$"
     name = re.match(regex, str(event.get_message())).groups()[0].strip()
+    if name.startswith("[CQ:"):
+        return
     result_list = total_list.filt_by_name(name)
     if len(result_list) == 0:
         await find_song.finish("未找到此歌曲\n添加曲名别名请联系CDRange(50835696)")
@@ -53,11 +60,49 @@ async def _(event: Event):
     else:
         await find_song.finish(f"结果过多（{len(result_list)} 条），请缩小查询范围。")
 
+find_song_by_cover = on_message(priority = DEFAULT_PRIORITY, block = False)
+@find_song_by_cover.handle()
+async def _(event: Event, matcher: Matcher):
+    msg = json.loads(event.json())["message"]
+    if len(msg)!=2:
+        return
+    if msg[0]["type"] == "image" and msg[1]["type"] == "text":
+        img_url = msg[0]["data"]["file"]
+        text = msg[1]["data"]["text"]
+    elif msg[1]["type"] == "image" and msg[0]["type"] == "text":
+        img_url = msg[1]["data"]["file"]
+        text = msg[0]["data"]["text"]
+    else:
+        return
+    if text.strip() != "是什么歌":
+        return
+    matcher.stop_propagation()
+    try:
+        r = requests.get(img_url, stream=True)
+        file_io = io.BytesIO(r.content)
+        img = Image.open(file_io).convert("RGB")
+    except:
+        await find_song_by_cover.finish("图片获取失败")
+    music_id = find_cover_id(img)
+    cover_id = f'{int(music_id):05d}'
+    music = total_list.by_id(music_id)
+    if music == None:
+        filenames = os.listdir(cover_dir)
+        if cover_id + ".png" in filenames:
+            img = Image.open(cover_dir + cover_id + ".png").convert('RGB').resize((190, 190))
+            await find_song_by_cover.finish(MessageSegment.text("匹配到相似图片，但该歌曲未登录国服或已删除：\n") + MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))
+        else:
+            await find_song_by_cover.finish("未知错误")
+    else:
+        await find_song_by_cover.finish(MessageSegment.text("您要找的是不是：\n") + song_MessageSegment2(music))
+
+
+
 
 """-----------谱师查歌&曲师查歌&新歌查歌&BPM查歌&版本查歌-----------"""
 hardlist = ['Basic','Advance','Expert','Master','Re:Master']
 
-charter_search = on_command('谱师查歌', priority = 10, block = True)
+charter_search = on_command('谱师查歌', priority = DEFAULT_PRIORITY, block = True)
 @charter_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     temp_dict = {
@@ -80,7 +125,7 @@ async def _(event: Event, message: Message = CommandArg()):
     await charter_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
 
-artist_search = on_command('曲师查歌', priority = 10, block = True)
+artist_search = on_command('曲师查歌', priority = DEFAULT_PRIORITY, block = True)
 @artist_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     artist = str(message).strip()
@@ -96,7 +141,7 @@ async def _(event: Event, message: Message = CommandArg()):
         await artist_search.finish(f"没有找到结果，请检查搜索条件。")
     await artist_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
-new_search = on_command('新歌查歌', priority = 10, block = True)
+new_search = on_command('新歌查歌', priority = DEFAULT_PRIORITY, block = True)
 @new_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     k=0
@@ -111,7 +156,7 @@ async def _(event: Event, message: Message = CommandArg()):
         await new_search.finish(f"没有找到结果，请检查搜索条件。")
     await new_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
-bpm_search = on_command('bpm查歌' , aliases={"BPM查歌","Bpm查歌"}, priority = 10, block = True)
+bpm_search = on_command('bpm查歌' , aliases={"BPM查歌","Bpm查歌"}, priority = DEFAULT_PRIORITY, block = True)
 @bpm_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     argv = str(message).strip().split(" ")
@@ -136,7 +181,7 @@ async def _(event: Event, message: Message = CommandArg()):
         s += f"No.{i+1:02d} BPM:{int(music_dict['basic_info']['bpm']):>3d} [{music_dict['id']}] {music_dict['title']}\n"
     await bpm_search.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
-update_music_data = on_command("更新歌曲列表", priority = 5, block = True, rule = range_checker)
+update_music_data = on_command("更新歌曲列表", priority = DEFAULT_PRIORITY, block = True, rule = range_checker)
 @update_music_data.handle()
 async def _update_music_data(event: Event, message: Message = CommandArg()):
     status,strr = await offlineinit()
@@ -148,7 +193,7 @@ async def _update_music_data(event: Event, message: Message = CommandArg()):
         await update_music_data.finish(strr)
 
 
-version_search = on_command('版本查歌', priority = 10, block = True)
+version_search = on_command('版本查歌', priority = DEFAULT_PRIORITY, block = True)
 @version_search.handle()
 async def _(event: Event, message: Message = CommandArg()):
     msg = str(message).strip()
@@ -182,17 +227,17 @@ async def _(event: Event, message: Message = CommandArg()):
 
 
 
-plate = on_regex(r'^([真超檄橙暁晓桃櫻樱紫菫堇白雪輝辉熊華华爽煌舞霸宙星祭])([極极将舞神者])(舞?)(?:进度|完成表|完成度)\s?(全?)$', priority = 10, block = True)
+plate = on_regex(r'^([真超檄橙暁晓桃櫻樱紫菫堇白雪輝辉熊華华爽煌舞霸宙星祭祝])([極极将舞神者])(舞?)(?:进度|完成表|完成度)\s?(全?)$', priority = DEFAULT_PRIORITY, block = True)
 @plate.handle()
 async def _plate(event: Event):
-    regex = r'^([真超檄橙暁晓桃櫻樱紫菫堇白雪輝辉熊華华爽煌舞霸宙星祭])([極极将舞神者])(舞?)(?:进度|完成表|完成度)\s?(全?)$'
+    regex = r'^([真超檄橙暁晓桃櫻樱紫菫堇白雪輝辉熊華华爽煌舞霸宙星祭祝])([極极将舞神者])(舞?)(?:进度|完成表|完成度)\s?(全?)$'
     res = re.match(regex, str(event.get_message())).groups()
     if ((res[0]=="霸") ^ (res[1]=="者")) or ((res[1]=="舞") ^ (res[2]=="舞")):
         await plate.finish("¿")
     version = pnconvert[res[0]]
     if version == "霸":
         version = "舞"
-    if version != "祭":
+    if version not in "祭祝":
         ids = musicGroup[version]
     else:
         ids = []
@@ -385,7 +430,7 @@ async def _plate(event: Event):
         s = "请注意，国服爽代与煌代成就需一同清谱舞萌DX2021版本获得\n"
     elif version in "宙星":
         s = "请注意，国服宙代与星代成就需一同清谱舞萌DX2022版本获得\n"
-    elif version in "祭":
+    elif version in "祭祝":
         s = "舞萌DX2023目前尚未更新完成，以下仅展示当前曲目\n"
     elif version in "真" and res[1] == "将":
         s = "真代没有真将，但是我可以假装帮你查\n"
@@ -399,7 +444,7 @@ async def _plate(event: Event):
         MessageSegment("image",{"file": f"base64://{str(b64, encoding='utf-8')}"}))
 
 
-refresh_data = on_command("刷新成绩", priority = 10, block = True)
+refresh_data = on_command("刷新成绩", priority = DEFAULT_PRIORITY, block = True)
 @refresh_data.handle()
 async def _refresh_data(event: Event, message: Message = CommandArg()):
     qq = str(event.get_user_id())
@@ -411,7 +456,7 @@ async def _refresh_data(event: Event, message: Message = CommandArg()):
 
 
 
-levelquery = on_regex(r"^([0-9]+)([＋\+]?)(?:进度|完成表|完成度)$",priority = 10, block = True)
+levelquery = on_regex(r"^([0-9]+)([＋\+]?)(?:进度|完成表|完成度)$",priority = DEFAULT_PRIORITY, block = True)
 @levelquery.handle()
 async def _levelquery(event: Event):
     regex = r"^([0-9]+)([＋\+]?)(?:进度|完成表|完成度)$"
@@ -491,34 +536,55 @@ async def _levelquery(event: Event):
         MessageSegment("image",{"file": f"base64://{str(b64, encoding='utf-8')}"}))
     
 
-singlequery = on_command("info",priority = 10, block = True)
+singlequery = on_command("info",priority = DEFAULT_PRIORITY, block = True)
 @singlequery.handle()
 async def _singlequery(event: Event, message: Message = CommandArg()):
-    msg = str(message).strip()
-    music = None
+    o_msg = str(message).strip()
+    msg = o_msg
+    diff = {'绿':0,'黄':1,'红':2,'紫':3,'白':4}
+    if msg[0] in diff:
+        diff = diff[msg[0]]
+        msg = msg[1:]
+    else:
+        diff = -1
+    music1 = None
+    music2 = None
     try:
         id = int(msg)
-        music = total_list.by_id(str(id))
-        if music == None:
+        music2 = total_list.by_id(str(id))
+        if music2 == None:
             raise Exception
     except:
         if msg == "":
             await singlequery.finish("请输入正确的查询命令，格式：info+id或info+部分歌名。")
         else:
-            name = msg
-            res = total_list.filt_by_name(title_search=name)
-            if len(res) == 0:
+            res1 = total_list.filt_by_name(title_search=msg)
+            res2 = total_list.filt_by_name(title_search=o_msg)
+            if len(res1) == len(res2) == 0:
                 await singlequery.finish("没有找到这样的乐曲。")
-            elif len(res) == 1:
-                music = res[0]
-            else:
-                for i in range(len(res)):
-                    if res[i]['title'].lower().strip() == name.lower().strip():
-                        music = res[i]
+
+            if len(res1) == 1:
+                music1 = res1[0]
+            elif len(res1) > 1:
+                for i in range(len(res1)):
+                    if res1[i]['title'].lower().strip() == msg.lower().strip():
+                        music1 = res1[i]
                         break
-                if music == None:
-                    music = random.choice(res)
-    id = int(music.id)
+                if music1 == None:
+                    music1 = random.choice(res1)
+
+            if len(res2) == 1:
+                music2 = res2[0]
+                if music1 != None and (music1.id != music2.id):
+                    music1 = music2
+                    diff = -1
+            elif len(res2) > 1:
+                for i in range(len(res2)):
+                    if res2[i]['title'].lower().strip() == o_msg.lower().strip():
+                        music2 = res2[i]
+                        break
+                if music2 == None:
+                    music2 = random.choice(res2)
 
     qq = str(event.get_user_id())
     if not_exist_data(qq):
@@ -526,22 +592,40 @@ async def _singlequery(event: Event, message: Message = CommandArg()):
     player_data,success = await read_full_data(qq)
     if success == 400:
         await singlequery.finish("未找到此玩家，请确登陆https://www.diving-fish.com/maimaidx/prober/ 录入分数，并正确填写用户名与QQ号。")
-    records = [{},{},{},{},{}]
+    records1 = [{},{},{},{},{}]
+    records2 = [{},{},{},{},{}]
     for rec in player_data['records']:
-        if rec['song_id'] == id:
-            records[4-rec['level_index']] = rec
-    if records == [{},{},{},{},{}]:
-        await singlequery.finish(f"您查询的是{music.title}\n您还没有打过这首歌")
+        if music1 != None and rec['song_id'] == int(music1.id):
+            records1[rec['level_index']] = rec
+        if music2 != None and rec['song_id'] == int(music2.id):
+            records2[rec['level_index']] = rec
+    if records1 == records2 == [{},{},{},{},{}]:
+        if music1 == None:
+            title = music2.title
+        elif music2 == None:
+            title = music1.title
+        elif music1.title == music2.title:
+            title = music1.title
+        else:
+            title = music1.title + "或" + music2.title
+        await singlequery.finish(f"您查询的是{title}\n没有查到成绩。")
     else:
         imgs = []
-        for rec in records:
-            if rec == {}:
-                continue
-            else:
-                img = await draw_new_info(rec,music)
-                imgs.append(img)
+        with open("src/static/mai/rgplct.json","r",encoding="utf-8") as f:
+            rgplct = json.load(f)
+        flag = False
+        if qq in rgplct:
+            flag = rgplct[qq]
+        if diff == -1 or records1[diff] == {}:
+            for rec in records2:
+                if rec != {}:
+                    img = await draw_new_info(rec,music2,plct=flag)
+                    imgs.append(img)
+        else:
+            img = await draw_new_info(records1[diff],music1,plct=flag)
+            imgs.append(img)
+
         width_sum = 5
-        imgs.reverse()
         for img in imgs:
             width_sum += img.size[0]+5
         final_img = Image.new("RGB",(width_sum,imgs[0].size[1]+10),(255,255,255))
@@ -555,9 +639,116 @@ async def _singlequery(event: Event, message: Message = CommandArg()):
         img_draw.text((width_sum-156,27),"Range-Bot",(0,0,0),font_title)
         await singlequery.finish(MessageSegment.at(qq)+MessageSegment.image(f"base64://{str(image_to_base64(final_img), encoding='utf-8')}"))
 
+def get_compare_value(record:dict):
+    try:
+        ds = float(total_list.by_id(record['song_id']).stats[record['level_index']]['fit_diff'])
+    except:
+        ds = record['ds']
+    return ds + max(record['achievements']-100.8,0)
+
+
+"""------------随机牛逼/随机丢人------------"""
+random_niubi = on_command('随机牛逼', priority = DEFAULT_PRIORITY, block = True, rule = to_me())
+@random_niubi.handle()
+async def _random_niubi(event: Event, message: Message = CommandArg()):
+    msg = str(message).strip()
+    # 判断msg是否为数字
+    n = 1
+    if msg.isdigit():
+        n = int(msg)
+        if n<=0 or n>10:
+            n = 1
+
+    qq = str(event.get_user_id())
+    if not_exist_data(qq):
+        await singlequery.send("每天第一次查询自动刷新成绩，可能需要较长时间。若需手动刷新请发送 刷新成绩")
+    player_data,success = await read_full_data(qq)
+    if success == 400:
+        await singlequery.finish("未找到此玩家，请确登陆https://www.diving-fish.com/maimaidx/prober/ 录入分数，并正确填写用户名与QQ号。")
+
+    records = []
+    for rec in player_data['records']:
+        if rec['achievements'] >= 100.8 and rec['level_index'] >= 3:
+            # rec['compare_value'] = get_compare_value(rec)
+            records.append(rec)
+    # records.sort(key = lambda x:x['compare_value'],reverse = True)
+    if len(records) == 0:
+        await random_niubi.finish(MessageSegment.at(qq) + MessageSegment.text("您没有很牛逼的成绩，无法随机牛逼。"))
+    # records = records[:min(n*10,len(records))]
+    draw_list = random.sample(records,min(n,len(records)))
+    imgs = []
+    for rec in draw_list:
+        music = total_list.by_id(rec['song_id'])
+        img = await draw_new_info(rec,music)
+        imgs.append(img)
+    width_sum = 5
+    for img in imgs:
+        width_sum += img.size[0]+5
+    final_img = Image.new("RGB",(width_sum,imgs[0].size[1]+10),(255,255,255))
+    width_pos = 5
+    for img in imgs:
+        final_img.paste(img,(width_pos,5),img)
+        width_pos += img.size[0]+5
+    font_title = ImageFont.truetype("src/static/SourceHanSansCN-Bold.otf", 20,encoding="utf-8")
+    img_draw = ImageDraw.Draw(final_img)
+    img_draw.text((width_sum-156,5),"Generated By",(0,0,0),font_title)
+    img_draw.text((width_sum-156,27),"Range-Bot",(0,0,0),font_title)
+    await random_niubi.finish(MessageSegment.at(qq)+MessageSegment.image(f"base64://{str(image_to_base64(final_img), encoding='utf-8')}"))
+
+random_caibi = on_command('随机菜逼', aliases={'随机丢人'}, priority = DEFAULT_PRIORITY, block = True, rule = to_me())
+@random_caibi.handle()
+async def _random_caibi(event: Event, message: Message = CommandArg()):
+    msg = str(message).strip()
+    # 判断msg是否为数字
+    n = 1
+    if msg.isdigit():
+        n = int(msg)
+        if n<=0 or n>10:
+            n = 1
+
+    qq = str(event.get_user_id())
+    if not_exist_data(qq):
+        await singlequery.send("每天第一次查询自动刷新成绩，可能需要较长时间。若需手动刷新请发送 刷新成绩")
+    player_data,success = await read_full_data(qq)
+    if success == 400:
+        await singlequery.finish("未找到此玩家，请确登陆https://www.diving-fish.com/maimaidx/prober/ 录入分数，并正确填写用户名与QQ号。")
+
+    records = []
+    for rec in player_data['records']:
+        if rec['achievements'] <97 and rec['level_index'] >= 3:
+            # rec['compare_value'] = get_compare_value(rec)
+            records.append(rec)
+    # records.sort(key = lambda x:x['compare_value'],reverse = True)
+    if len(records) == 0:
+        await random_caibi.finish(MessageSegment.at(qq) + MessageSegment.text("您没有很菜逼的成绩，无法随机菜逼。"))
+    # records = records[:min(n*10,len(records))]
+    draw_list = random.sample(records,min(n,len(records)))
+    imgs = []
+    for rec in draw_list:
+        music = total_list.by_id(rec['song_id'])
+        img = await draw_new_info(rec,music)
+        imgs.append(img)
+    width_sum = 5
+    for img in imgs:
+        width_sum += img.size[0]+5
+    final_img = Image.new("RGB",(width_sum,imgs[0].size[1]+10),(255,255,255))
+    width_pos = 5
+    for img in imgs:
+        final_img.paste(img,(width_pos,5),img)
+        width_pos += img.size[0]+5
+    font_title = ImageFont.truetype("src/static/SourceHanSansCN-Bold.otf", 20,encoding="utf-8")
+    img_draw = ImageDraw.Draw(final_img)
+    img_draw.text((width_sum-156,5),"Generated By",(0,0,0),font_title)
+    img_draw.text((width_sum-156,27),"Range-Bot",(0,0,0),font_title)
+    await random_caibi.finish(MessageSegment.at(qq)+MessageSegment.image(f"base64://{str(image_to_base64(final_img), encoding='utf-8')}"))
+
+
+
+
+
 
 """-----------------随n个x-----------------"""
-rand_n = on_regex(r"^随[0-9]+[个|首][绿黄红紫白]?[0-9]+[＋\+]?", priority = 10, block = True)
+rand_n = on_regex(r"^随[0-9]+[个|首][绿黄红紫白]?[0-9]+[＋\+]?", priority = DEFAULT_PRIORITY, block = True)
 @rand_n.handle()
 async def _rand_n(event: Event):
     pattern = r"^随([0-9]+)[个|首]([绿黄红紫白]?)([0-9]+)([＋\+]?)(.*)"
@@ -639,7 +830,7 @@ async def _rand_n(event: Event):
         await rand_n.finish(msg)
 
 """-----------------分数列表-----------------"""
-fslb = on_regex(r"^([0-9]+)([＋\+]?)分数列?表([1-9]?)$", priority = 10, block = True)
+fslb = on_regex(r"^([0-9]+)([＋\+]?)分数列?表([1-9]?)$", priority = DEFAULT_PRIORITY, block = True)
 @fslb.handle()
 async def _fslb(event: Event):
     pattern = r"^([0-9]+)([＋\+]?)分数列?表([1-9]?)$"
@@ -690,7 +881,7 @@ async def _fslb(event: Event):
     await fslb.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
 """-----------------别名增删查----------------"""
-select_alias_vip = on_command("别名", priority = 10, block = True, rule = maiqun_checker)
+select_alias_vip = on_command("别名", priority = DEFAULT_PRIORITY, block = True, rule = maiqun_checker)
 @select_alias_vip.handle()
 async def _select_alias_vip(event: Event, message: Message = CommandArg()):
     msg = str(message).strip().split(" ")
@@ -767,7 +958,7 @@ async def _select_alias_vip(event: Event, message: Message = CommandArg()):
         await select_alias_vip.finish('输入格式错误。\n查别名请输入“别名 id”\n增加别名请输入“别名 增 id 别名”\n删除别名请输入“别名 删 id 别名”\n')
 
 """-----------------有什么别名----------------"""
-select_alias = on_regex(r"^([0-9]+)有什么别名$", priority = 11, block = True)
+select_alias = on_regex(r"^([0-9]+)有什么别名$", priority = DEFAULT_PRIORITY, block = True)
 @select_alias.handle()
 async def _select_alias(event: Event):
     msg = str(event.get_message()).strip()
@@ -786,7 +977,7 @@ async def _select_alias(event: Event):
 
 
 """-----------------apb50----------------"""
-apb50 = on_command("apb50", priority = 10, block = True)
+apb50 = on_command("apb50", priority = DEFAULT_PRIORITY, block = True)
 @apb50.handle()
 async def _apb50(event: Event, message: Message = CommandArg()):
     username = str(message).strip()
@@ -806,3 +997,67 @@ async def _apb50(event: Event, message: Message = CommandArg()):
             await apb50.finish("该用户禁止了其他人获取数据。")
     img = await generateap50(player_data,qq)
     await apb50.finish(MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))
+
+
+
+"""-----------------b50水分检测----------------"""
+b50_water = on_command('b50水分检测', priority = DEFAULT_PRIORITY - 1, block = True)
+@b50_water.handle()
+async def _b50_water(event: Event, message: Message = CommandArg()):
+    s = str(message).strip()
+    if s != "":
+        return
+    
+    qq = str(event.get_user_id())
+    if not_exist_data(qq):
+        await b50_water.send("每天第一次查询自动刷新成绩，可能需要较长时间。若需手动刷新请发送 刷新成绩")
+    player_data,success = await read_full_data(qq)
+    if success == 400:
+        await b50_water.finish("未找到此玩家，请确登陆https://www.diving-fish.com/maimaidx/prober/ 录入分数，并正确填写用户名与QQ号。")
+    msg = "\n"
+    msg += "本功能根据拟合定数进行计算，仅供娱乐，不具有任何参考价值，请勿上纲上线！\n下图为您b50的含水图\n"
+    img,msg2 = await generateb50_water_msg(player_data,qq)
+    await b50_water.finish(MessageSegment.at(qq) + MessageSegment.text(msg) + MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}") + MessageSegment.text(msg2))
+    
+"""-----------------b50娱乐版----------------"""
+b50_yuleban = on_command('b50娱乐版', priority = DEFAULT_PRIORITY - 1, block = True)
+@b50_yuleban.handle()
+async def _b50_yuleban(event: Event, message: Message = CommandArg()):
+    s = str(message).strip()
+    qq = str(event.get_user_id())
+    if s != "":
+        if type(re.match("group_(.+)_(.+)",event.get_session_id())) != re.Match:
+            return
+        else:
+            groupid = str(re.match("group_(.+)_(.+)",event.get_session_id()).groups()[0])
+        if groupid not in MAIN_GROUPS:
+            return
+        else:
+            try:
+                qq = int(s)
+                player_data,success = await read_full_data(qq)
+            except:
+                player_data,success = await read_full_data(qq='0',username=s)
+    else:
+        if not_exist_data(qq):
+            await b50_yuleban.send("每天第一次查询自动刷新成绩，可能需要较长时间。若需手动刷新请发送 刷新成绩")
+        player_data,success = await read_full_data(qq)
+    if success == 400:
+        await b50_yuleban.finish("未找到此玩家，请确登陆https://www.diving-fish.com/maimaidx/prober/ 录入分数，并正确填写用户名与QQ号。")
+    elif success == 403:
+        await b50_yuleban.finish("该用户禁止了其他人获取数据。")
+    for song in player_data['records']:
+        fitds = 0
+        try:
+            fitds = round(total_list.by_id(song['song_id']).stats[song['level_index']]['fit_diff'],2)
+        except:
+            pass
+        if fitds != 0:
+            song['ds'] = fitds
+    msg = "\n"
+    msg += "本功能根据拟合定数进行计算，仅供娱乐，不具有任何参考价值，请勿上纲上线！\n下图为您b50的娱乐版\n（部分定数的小数保留一位的歌曲为没有足够的数据生成拟合定数的歌曲）\n"
+    if s != "":
+        img = await generateb50_by_player_data(player_data,qq='0',yule=True)
+    else:
+        img = await generateb50_by_player_data(player_data,qq=qq,yule=True)
+    await b50_yuleban.finish(MessageSegment.at(qq) + MessageSegment.text(msg) + MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))

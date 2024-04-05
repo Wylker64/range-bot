@@ -12,33 +12,44 @@ plate_path = "src/static/mai/plate/"
         
 async def refresh_player_full_data(qq: str):
     async with aiohttp.request("GET","https://www.diving-fish.com/api/maimaidxprober/dev/player/records",params={"qq":qq},headers={"developer-token":DF_Dev_Token}) as resp:
-        if resp.status == 400:
-            return None, 400
-        full_data = await resp.json()      
-        file = open( temp_dir + qq + time.strftime("_%y%m%d") + ".json", "w", encoding= "utf-8")
-        json.dump(full_data,file)
-        file.close()
+        if resp.status != 200:
+            return None, resp.status
+        full_data = await resp.json()
+        with open(temp_dir + qq + time.strftime("_%y%m%d") + ".json", "w", encoding= "utf-8") as f:
+            json.dump(full_data,f)
         return full_data, 0
 
 async def get_full_data_by_username(username: str):
     async with aiohttp.request("GET","https://www.diving-fish.com/api/maimaidxprober/dev/player/records",params={"username":username},headers={"developer-token":DF_Dev_Token}) as resp:
-        if resp.status == 400:
-            return None, 400
+        if resp.status != 200:
+            return None, resp.status
         full_data = await resp.json()
         return full_data, 0
 
-async def read_full_data(qq:str):
-    try:
-        file = open( temp_dir + qq + time.strftime("_%y%m%d") + ".json", "r", encoding= "utf-8")
-        data = json.load(file)
-        file.close()
-        return data,1
-    except:
-        data,success = await refresh_player_full_data(qq)
-        return data,success
+async def read_full_data(qq:str,username:str = None):
+    if username:
+        async with aiohttp.request("GET","https://www.diving-fish.com/api/maimaidxprober/dev/player/records",params={"username":username},headers={"developer-token":DF_Dev_Token}) as resp:
+            if resp.status != 200:
+                return None, resp.status
+            full_data = await resp.json()
+            return full_data, 0
+    if os.path.exists(f"{temp_dir}mairec/{qq}.json"):
+        with open(f"{temp_dir}mairec/{qq}.json","r",encoding="utf-8") as f:
+            data = json.load(f)
+        return data,2
+    else:
+        if os.path.exists(temp_dir + qq + time.strftime("_%y%m%d") + ".json"):
+            with open(temp_dir + qq + time.strftime("_%y%m%d") + ".json","r",encoding="utf-8") as f:
+                data = json.load(f)
+            return data,1
+        else:
+            data,success = await refresh_player_full_data(qq)
+            return data,success
 
 def not_exist_data(qq:str):
     if os.path.exists(temp_dir + qq + time.strftime("_%y%m%d") + ".json"):
+        return 0
+    elif os.path.exists(f"{temp_dir}mairec/{qq}.json"):
         return 0
     else:
         return 1
@@ -56,7 +67,7 @@ def draw_one_music(record:dict)->Image.Image:
         cover.alpha_composite(f)
         
     base.paste(cover,(5,5),cover)
-    if record['cover'] in info_to_file_dict.keys():
+    if record['cover'] in info_to_file_dict:
         cover = Image.open(f"{assets_path}UI_{info_to_file_dict[record['cover']]}.png").convert("RGBA")
         base.paste(cover,(int((base.size[0]-cover.size[0])/2),int((base.size[1]-cover.size[1])/2)),cover)
 

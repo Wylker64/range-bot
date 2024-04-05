@@ -1,11 +1,15 @@
 # Author: xyb, Diving_Fish
 
-import os, aiohttp, random, heapq
+import os, aiohttp, random, heapq, io, time
+import matplotlib.pyplot as plt
+import numpy as np
+
 from typing import Optional, Dict, List, Tuple
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from src.libraries.maimaidx_music import total_list, compute_ra
 from src.libraries.image import get_music_cover, get_qq_logo
-from src.libraries.static_lists_and_dicts import platename_to_file
+from src.libraries.static_lists_and_dicts import platename_to_file, pnconvert
+from src.libraries.tool import is_fools_day
 
 scoreRank = 'D C B BB BBB A AA AAA S S+ SS SS+ SSS SSS+'.split(' ')
 combo = ' FC FC+ AP AP+'.split(' ')
@@ -46,10 +50,10 @@ class ChartInfo(object):
         fs = ['', 'fs', 'fsp', 'fsd', 'fsdp']
         fsi = fs.index(data["fs"])
         return cls(
-            idNum=total_list.by_title(data["title"]).id,
+            idNum=data["song_id"],
             title=data["title"],
             diff=data["level_index"],
-            ra=data["ra"],
+            ra=compute_ra(data["ds"], data["achievements"]),
             ds=data["ds"],
             comboId=fi,
             fsId=fsi,
@@ -95,8 +99,16 @@ class DrawBest(object):
     def __init__(self, sdBest:BestList, dxBest:BestList, nickname:str, plate:str, qq:str, additional_rating:int):
         self.sdBest = sdBest
         self.dxBest = dxBest
-        self.nickname = self._stringQ2B(nickname)
-        self.plate = plate
+        if nickname == None or nickname == "":
+            self.nickname = "舞萌DX2023"
+        else:
+            self.nickname = self._stringQ2B(nickname)
+        self.plate = ""
+        for c in plate:
+            if c in pnconvert:
+                self.plate += pnconvert[c]
+            else:
+                self.plate += c
         self.qq = qq
         self.adr = additional_rating
         self.sdRating = 0
@@ -200,6 +212,10 @@ class DrawBest(object):
         COLOUMS_RATING = [86-5, 100-6, 115-7, 130-8, 145-9]
         theRa = self.playerRating
         i = 4
+
+        if is_fools_day():
+            theRa += 10000
+
         while theRa:
             digit = theRa % 10
             theRa = theRa // 10
@@ -238,7 +254,11 @@ class DrawBest(object):
             tempDraw.text((8, 8), title, 'white', font)
             font = ImageFont.truetype(titleFontName, 12, encoding='utf-8')
 
-            tempDraw.text((7, 28), f'{"%.4f" % chartInfo.achievement}%', 'white', font)
+            if is_fools_day():
+                tempDraw.text((7, 28), f'{"%d" % int(chartInfo.achievement*10000)}%', 'red', font)
+            else:
+                tempDraw.text((7, 28), f'{"%.4f" % chartInfo.achievement}%', 'white', font)
+
             rankImg = Image.open(self.pic_dir + f'UI_GAM_Rank_{rankPic[chartInfo.scoreId]}.png').convert('RGBA')
             rankImg = self._resizePic(rankImg, 0.5)
             temp.paste(rankImg, (50, 61), rankImg.split()[3])
@@ -251,7 +271,7 @@ class DrawBest(object):
                 fsImg = self._resizePic(fsImg, 0.6)
                 temp.paste(fsImg, (100, 22), fsImg.split()[3])
             font = ImageFont.truetype('src/static/adobe_simhei.otf', 12, encoding='utf-8')
-            tempDraw.text((8, 44), f'Base: {chartInfo.ds} -> {compute_ra(chartInfo.ds, chartInfo.achievement)}', 'white', font)
+            tempDraw.text((8, 44), f'Base: {chartInfo.ds} -> {chartInfo.ra}', 'white', font)
             font = ImageFont.truetype('src/static/adobe_simhei.otf', 18, encoding='utf-8')
             tempDraw.text((8, 60), f'#{num + 1}', 'white', font)
 
@@ -286,7 +306,11 @@ class DrawBest(object):
             tempDraw.text((8, 8), title, 'white', font)
             font = ImageFont.truetype(titleFontName, 12, encoding='utf-8')
 
-            tempDraw.text((7, 28), f'{"%.4f" % chartInfo.achievement}%', 'white', font)
+            if is_fools_day():
+                tempDraw.text((7, 28), f'{"%d" % int(chartInfo.achievement*10000)}%', 'red', font)
+            else:
+                tempDraw.text((7, 28), f'{"%.4f" % chartInfo.achievement}%', 'white', font)
+
             rankImg = Image.open(self.pic_dir + f'UI_GAM_Rank_{rankPic[chartInfo.scoreId]}.png').convert('RGBA')
             rankImg = self._resizePic(rankImg, 0.5)
             temp.paste(rankImg, (50, 61), rankImg.split()[3])
@@ -319,12 +343,13 @@ class DrawBest(object):
     def draw(self):
         if self.plate in platename_to_file:
             PlateImg = Image.open(self.plate_dir + 'main_plate/' + platename_to_file[self.plate]).convert('RGBA')
+        elif self.plate in os.listdir(self.plate_dir + 'private_plate/'):
+            PlateImg = Image.open(self.plate_dir + 'private_plate/' + self.plate).convert('RGBA')
+        elif self.qq + '.png' in os.listdir(self.plate_dir + 'private_plate/'):
+            PlateImg = Image.open(self.plate_dir + 'private_plate/' + self.qq + '.png').convert('RGBA')
         else:
-            try:
-                PlateImg = Image.open(self.plate_dir + 'private_plate/' + self.qq + '.png').convert('RGBA')
-            except:
-                plates = os.listdir(self.plate_dir + 'other_plate/')
-                PlateImg = Image.open(self.plate_dir + 'other_plate/' + random.choice(plates)).convert('RGBA')
+            plates = os.listdir(self.plate_dir + 'other_plate/')
+            PlateImg = Image.open(self.plate_dir + 'other_plate/' + random.choice(plates)).convert('RGBA')
         self.img.paste(PlateImg, (5, 3), mask=PlateImg.split()[3])
         
         if self.qq != '0':
@@ -402,39 +427,6 @@ class DrawBest(object):
     def getDir(self):
         return self.img
 
-
-# def computeRa(ds: float, achievement: float) -> int:
-#     baseRa = 22.4 
-#     if achievement < 50:
-#         baseRa = 7.0
-#     elif achievement < 60:
-#         baseRa = 8.0 
-#     elif achievement < 70:
-#         baseRa = 9.6 
-#     elif achievement < 75:
-#         baseRa = 11.2 
-#     elif achievement < 80:
-#         baseRa = 12.0 
-#     elif achievement < 90:
-#         baseRa = 13.6 
-#     elif achievement < 94:
-#         baseRa = 15.2 
-#     elif achievement < 97:
-#         baseRa = 16.8 
-#     elif achievement < 98:
-#         baseRa = 20.0 
-#     elif achievement < 99:
-#         baseRa = 20.3
-#     elif achievement < 99.5:
-#         baseRa = 20.8 
-#     elif achievement < 100:
-#         baseRa = 21.1 
-#     elif achievement < 100.5:
-#         baseRa = 21.6 
-
-#     return math.floor(ds * (min(100.5, achievement) / 100) * baseRa)
-
-
 async def generate50(payload: Dict) -> Tuple[Optional[Image.Image], int]:
     async with aiohttp.request("POST", "https://www.diving-fish.com/api/maimaidxprober/query/player", json=payload) as resp:
         if resp.status == 400:
@@ -446,6 +438,8 @@ async def generate50(payload: Dict) -> Tuple[Optional[Image.Image], int]:
         obj = await resp.json()
         dx: List[Dict] = obj["charts"]["dx"]
         sd: List[Dict] = obj["charts"]["sd"]
+        # if len(dx) == 0 and len(sd) == 0:
+        #     return None, 404
         for c in sd:
             sd_best.push(ChartInfo.from_json(c))
         for c in dx:
@@ -473,7 +467,7 @@ async def generateap50(player_data,qq) -> Image.Image:
     pic = DrawBest(sd_best, dx_best, player_data["nickname"], player_data["plate"], qq, player_data["additional_rating"]).getDir()
     return pic
 
-async def generateb50_by_player_data(player_data,qq) -> Image.Image:
+async def generateb50_by_player_data(player_data,qq,yule=False) -> Image.Image:
     sd_best = BestList(35)
     dx_best = BestList(15)
     for rec in player_data['records']:
@@ -483,5 +477,122 @@ async def generateb50_by_player_data(player_data,qq) -> Image.Image:
             sd_best.push(ChartInfo.from_json(rec))
     sd_best.sort()
     dx_best.sort()
+    if yule:
+        player_data["plate"] = "yule.png"
     pic = DrawBest(sd_best, dx_best, player_data["nickname"], player_data["plate"], qq, player_data["additional_rating"]).getDir()
     return pic
+
+async def draw_water_pic(fit_diffs:list)->Image.Image:
+    # 清除之前的图形状态
+    plt.clf()
+
+    y_values = fit_diffs
+    y_values.sort(reverse=True)
+
+    # 设置柱子之间的间隔
+    bar_width = 1  # 调整宽度
+    x_positions = np.arange(len(y_values))
+
+    # 创建颜色列表，根据y值的正负选择颜色
+    colors = ['red' if y < 0 else 'blue' for y in y_values]
+
+    # 创建条形图
+    plt.bar(x_positions, y_values, width=bar_width, color=colors, alpha=0.7)
+    # 在y=0处添加一条横线
+    plt.axhline(0, color='black', linestyle='-', linewidth=1)
+    # 设置y轴范围
+    plt.ylim(-1, 1)
+    # 隐藏边框和标签
+    plt.tick_params(top=False, right=False, left=False, bottom=False, labelleft=False, labelbottom=False)
+    # 隐藏图形边框
+    plt.box(False)
+    # 删除白边
+    plt.tight_layout()
+
+    buffer = io.BytesIO()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    img = Image.open(buffer).convert('RGB')
+
+    # fpath = "src/static/mai/temp/" + str(time.time()) + '.png'
+    # plt.savefig(fpath, format='png')
+    # img = Image.open(fpath).convert('RGB')
+    return img
+
+async def generateb50_water_msg(player_data,qq):
+    sd_best = BestList(35)
+    dx_best = BestList(15)
+    for rec in player_data['records']:
+        if total_list.by_id(rec["song_id"]).cn_version == "舞萌DX2023":
+            dx_best.push(ChartInfo.from_json(rec))
+        else:
+            sd_best.push(ChartInfo.from_json(rec))
+    sd_best.sort()
+    dx_best.sort()
+    id_record_list = []
+
+    fit_diffs = []
+    tempmusic = {
+        "id": "",
+        "title": "",
+        "dsdistance": 100,
+        "ds": 0,
+        "fitds": 0
+    }
+
+    min_ds_sd = 20
+    min_ds_dx = 20
+
+    for chartinfo in sd_best:
+        if chartinfo.ds < min_ds_sd:
+            min_ds_sd = chartinfo.ds
+        id_record_list.append(chartinfo.idNum)
+        try:
+            ds = float(chartinfo.ds)
+            fitds = float(total_list.by_id(chartinfo.idNum).stats[chartinfo.diff]['fit_diff'])
+        except:
+            continue
+        distance = ds-fitds
+        fit_diffs.append(distance)
+        if distance < tempmusic["dsdistance"]:
+            tempmusic["id"] = chartinfo.idNum
+            tempmusic["title"] = chartinfo.title
+            tempmusic["dsdistance"] = distance
+            tempmusic["ds"] = ds
+            tempmusic["fitds"] = fitds
+    for chartinfo in dx_best:
+        if chartinfo.ds < min_ds_dx:
+            min_ds_dx = chartinfo.ds
+        id_record_list.append(chartinfo.idNum)
+        try:
+            ds = float(chartinfo.ds)
+            fitds = float(total_list.by_id(chartinfo.idNum).stats[chartinfo.diff]['fit_diff'])
+        except:
+            continue
+        distance = ds-fitds
+        fit_diffs.append(distance)
+        if distance < tempmusic["dsdistance"]:
+            tempmusic["id"] = chartinfo.idNum
+            tempmusic["title"] = chartinfo.title
+            tempmusic["dsdistance"] = distance
+            tempmusic["ds"] = ds
+            tempmusic["fitds"] = fitds
+    img = await draw_water_pic(fit_diffs)
+    msg = f"您的b50中平均含水量为{np.mean(fit_diffs)*100:.2f}毫升。\n"
+    msg += f"含水量标准差为{np.std(fit_diffs)*100:.2f}毫升。\n"
+    msg += f"最有含金量谱面为 {tempmusic['id']}.{tempmusic['title']}\n"
+    msg += f"该谱面定数：{tempmusic['ds']} 拟合定数：{tempmusic['fitds']}\n"
+
+    min_ds = max(min_ds_sd,min_ds_dx)
+
+    musics = total_list.filter(ds=(round(min_ds+0.1,1),round(min_ds+0.3,1)))
+    random.shuffle(musics)
+    temp = ""
+    for music in musics:
+        if int(music.id) not in id_record_list:
+            for j in range(len(music['ds'])):
+                if (round(min_ds+0.1,1)<=music['ds'][j]<=round(min_ds+0.4,1)) and ('fit_diff' in music.stats[j]) and (music.stats[j]['fit_diff']-music['ds'][j] > 0.1):
+                    temp = f"推荐降水推分金曲\n{music.id}.{music.title}[{diffs[j]}]\n定数：{music['ds'][j]}\n拟合定数：{music.stats[j]['fit_diff']}\n"
+                    break
+    msg += temp
+    return img, msg

@@ -11,7 +11,9 @@ from src.libraries.maimai_best_40 import generate, generateb40_by_player_data
 from src.libraries.maimai_best_50 import generate50, generateb50_by_player_data
 from src.libraries.message_segment import *
 
-import re
+import re, datetime
+
+DEFAULT_PRIORITY = 10
 
 cover_dir = 'src/static/mai/cover/'
 
@@ -28,7 +30,7 @@ def inner_level_q(ds1, ds2=None):
     return result_set
 
 
-inner_level = on_command('inner_level ', aliases={'定数查歌 '}, priority = 10, block = True)
+inner_level = on_command('inner_level ', aliases={'定数查歌 '}, priority = DEFAULT_PRIORITY, block = True)
 
 @inner_level.handle()
 async def _(event: Event, message: Message = CommandArg()):
@@ -50,7 +52,7 @@ async def _(event: Event, message: Message = CommandArg()):
     await inner_level.finish(MessageSegment.image(f"base64://{str(image_to_base64(text_to_image(s)), encoding='utf-8')}"))
 
 
-spec_rand = on_regex(r"^随个(?:dx|sd|标准)?[绿黄红紫白]?[0-9]+\+?", priority = 10, block = True)
+spec_rand = on_regex(r"^随个(?:dx|sd|标准)?[绿黄红紫白]?[0-9]+\+?", priority = DEFAULT_PRIORITY, block = True)
 @spec_rand.handle()
 async def _(event: Event):
     #level_labels = ['绿', '黄', '红', '紫', '白']
@@ -74,13 +76,13 @@ async def _(event: Event):
     await spec_rand.finish(rand_result)
 
 
-mr = on_regex(r".*maimai.*什么", priority = 100, block = True)
+mr = on_regex(r".*maimai.*什么", priority = DEFAULT_PRIORITY*10, block = True)
 @mr.handle()
 async def _():
     await mr.finish(song_MessageSegment2(total_list.random()))
 
 
-search_music = on_regex(r"^查歌.+", priority = 10, block = True)
+search_music = on_regex(r"^查歌.+", priority = DEFAULT_PRIORITY, block = True)
 @search_music.handle()
 async def _(event: Event):
     regex = "^查歌(.+)"
@@ -112,7 +114,7 @@ async def _(event: Event):
         await search_music.finish(f"结果过多（{len(res)} 条），请缩小查询范围。")
 
 
-query_chart = on_regex(r"^([绿黄红紫白老]?) ?id ?([0-9]+)" , priority = 10, block = True)
+query_chart = on_regex(r"^([绿黄红紫白老]?) ?id ?([0-9]+)" , priority = DEFAULT_PRIORITY, block = True)
 @query_chart.handle()
 async def _(event: Event):
     regex = "^([绿黄红紫白老]?) ?id ?([0-9]+)"
@@ -186,29 +188,53 @@ BREAK: {chart['notes'][4]}
 
 
 wm_list = ['拼机', '推分', '越级', '下埋', '夜勤', '练底力', '练手法', '打旧框', '干饭', '抓绝赞', '收歌']
-
-jrwm = on_command('今日舞萌', aliases={'今日mai'}, priority = 10, block = True)
+jrwm = on_command('今日舞萌', aliases={'今日mai'}, priority = DEFAULT_PRIORITY, block = True)
 @jrwm.handle()
 async def _(event: Event, message: Message = CommandArg()):
     qq = int(event.get_user_id())
     h = hash(qq)
+    dawumeng = (h >> 250)&1
+    dazhonger = (h >> 251)&1
+    dayinji = (h >> 252)&1
     rp = h % 100
     wm_value = []
-    for i in range(11):
+    for i in range(len(wm_list)):
         wm_value.append(h & 3)
         h >>= 2
     s = f"今日人品值：{rp}\n"
-    for i in range(11):
+    for i in range(len(wm_list)):
         if wm_value[i] == 3:
             s += f'宜 {wm_list[i]}\n'
         elif wm_value[i] == 0:
             s += f'忌 {wm_list[i]}\n'
-    s += "然哥提醒您：打几把舞萌快去学习\n新机需要共同维护，谁拆机，我拆谁\n"
-    music = total_list[h % len(total_list)]
+    if dazhonger == 1:
+        s += "宜 打中二\n"
+    else:
+        s += "忌 打中二\n"
+    if dayinji == 1:
+        s += "宜 打音击\n"
+    else:
+        s += "忌 打音击\n"
+    day = datetime.datetime.now().strftime("%y%m%d")
+    if day == "240209":
+        s += "然哥提醒您：除夕快乐！\n兔年最后一天，打机当然打：\n"
+        music = total_list.by_id("301")
+    elif day == "240210":
+        s += "然哥提醒您：大年初一，新年快乐！\n龙年打机当然打：\n"
+        music = total_list.by_id("270")
+    elif day == "240211":
+        s += "然哥提醒您：大年初二，新年快乐！\n龙年打机当然打：\n"
+        music = total_list.by_id("212")
+    elif day == "240212":
+        s += "然哥提醒您：大年初三，新年快乐！\n龙年打机当然打：\n"
+        music = total_list.by_id("367")
+    else:
+        s += "然哥提醒您：打几把舞萌快去学习\n谁拆机，我拆谁\n"
+        music = total_list[h % len(total_list)]
     await jrwm.finish(MessageSegment.text(s) + song_MessageSegment(music))
 
 
-query_score = on_command('分数线', priority = 10, block = True)
+query_score = on_command('分数线', priority = DEFAULT_PRIORITY, block = True)
 @query_score.handle()
 async def _(event: Event, message: Message = CommandArg()):
     r = "([绿黄红紫白])(id)?([0-9]+)"
@@ -252,7 +278,7 @@ BREAK 50落(一共{brk}个)等价于 {(break_50_reduce / 100):.3f} 个 TAP GREAT
 
 temp_dir = 'src/static/mai/temp/'
 
-best_40_pic = on_command('b40', priority = 10, block = True)
+best_40_pic = on_command('b40', priority = DEFAULT_PRIORITY, block = True)
 @best_40_pic.handle()
 async def _(event: Event, message: Message = CommandArg()):
     username = str(message).strip()
@@ -273,11 +299,11 @@ async def _(event: Event, message: Message = CommandArg()):
             await best_40_pic.finish("未找到此玩家，请确登陆https://www.diving-fish.com/maimaidx/prober/录入分数，并正确填写用户名与QQ号。")
         elif success == 403:
             await best_40_pic.finish("该用户禁止了其他人获取数据。")
-        else:
-            await best_40_pic.finish(MessageSegment.text("旧版b40已停止维护，对结果不负责")+MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))
+    else:
+        await best_40_pic.finish(MessageSegment.text("旧版b40已停止维护，对结果不负责")+MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))
 
 
-best_50_pic = on_command('b50', priority = 10, block = True)
+best_50_pic = on_command('b50', priority = DEFAULT_PRIORITY, block = True)
 @best_50_pic.handle()
 async def _(event: Event, message: Message = CommandArg()):
     username = str(message).strip()
@@ -298,5 +324,5 @@ async def _(event: Event, message: Message = CommandArg()):
             await best_50_pic.finish("未找到此玩家，请确登陆https://www.diving-fish.com/maimaidx/prober/录入分数，并正确填写用户名与QQ号。")
         elif success == 403:
             await best_50_pic.finish("该用户禁止了其他人获取数据。")
-        else:
-            await best_50_pic.finish(MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))
+    else:
+        await best_50_pic.finish(MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))

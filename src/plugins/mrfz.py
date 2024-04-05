@@ -6,14 +6,16 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from src.libraries.image import *
 from src.libraries.secrets import *
 
+from playwright.async_api import async_playwright
 from PIL import Image
 from io import BytesIO
 import glob, random, base64, requests, os, time
 
+DEFAULT_PRIORITY = 40
 
 mrfz_dir = 'src/static/mrfz/'
 
-lihui = on_command('zlh', aliases={'舟立绘'}, priority=40, block=True)
+lihui = on_command('zlh', aliases={'舟立绘'}, priority=DEFAULT_PRIORITY, block=True)
 @lihui.handle()
 async def _(message: Message = CommandArg()):
     argv = str(message).strip().split(" ")
@@ -37,55 +39,33 @@ async def _(message: Message = CommandArg()):
         url = "base64://" + encoded.decode('utf-8')
         await lihui.finish(MessageSegment.image(url))
 
-cailiao = on_command('舟材料', aliases={'zcl'}, priority=40, block=True)
+# 舟材料
+zcl_url = "https://ark.yituliu.cn/"
+
+cailiao = on_command('舟材料', aliases={'zcl'}, priority=DEFAULT_PRIORITY, block=True)
 @cailiao.handle()
 async def _(message: Message = CommandArg()):
     if str(message).strip() != "":
         return
-    
+    img_bytes = b''
     try:
-        if os.path.getmtime(mrfz_dir + '材料.png') < time.time() - 86400:
-            os.remove(mrfz_dir + '材料.png')
-    except:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            await page.goto(zcl_url)
+            await page.set_viewport_size({"width": 1200, "height": 1080})
+
+            await page.wait_for_load_state("networkidle", timeout=10000) 
+
+            # 选中id为stageForCards的元素
+            stage_elements = await page.query_selector("#stageForCards")
+            img_bytes = await stage_elements.screenshot()
+    except Exception as e:
+        print(e)
         pass
-
-    if os.path.exists(mrfz_dir + '材料.png'):
-        await cailiao.finish(MessageSegment.image(f"base64://{str(image_to_base64(Image.open(mrfz_dir + '材料.png')), encoding='utf-8')}"))
-
+    if img_bytes == b'0':
+        await cailiao.finish("网页元素获取失败")
+    elif img_bytes == b'':
+        await cailiao.finish("网页访问或加载失败")
     else:
-        html_to_img_url = f"http://{TENCENT_CLOUD_IP}:{HTML_TO_IMAGE_PORT}/screenshot"
-        key = HTML_TO_IMAGE_KEY
-        params = {
-            'url': 'http://yituliu.site',
-            'key': key, 
-            'w': '1000', 
-            'h': '1321'
-            }
-        res = requests.get(html_to_img_url, params=params)
-        if res.status_code != 200:
-            await cailiao.finish("渲染失败")
-        else:
-            img = Image.open(BytesIO(res.content))
-            img = img.crop((0,134,1000,885))
-            img.save(mrfz_dir + '材料.png')
-            await cailiao.finish(MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))
-
-shuaxincailiao = on_command('刷新舟材料', priority=40, block=True, rule=range_checker)
-@shuaxincailiao.handle()
-async def _():
-    html_to_img_url = f"http://{TENCENT_CLOUD_IP}:{HTML_TO_IMAGE_PORT}/screenshot"
-    key = HTML_TO_IMAGE_KEY
-    params = {
-        'url': 'http://yituliu.site',
-        'key': key, 
-        'w': '1000', 
-        'h': '1321'
-        }
-    res = requests.get(html_to_img_url, params=params)
-    if res.status_code != 200:
-        await cailiao.finish("渲染失败")
-    else:
-        img = Image.open(BytesIO(res.content))
-        img = img.crop((0,134,1000,885))
-        img.save(mrfz_dir + '材料.png')
-        await cailiao.finish(MessageSegment.image(f"base64://{str(image_to_base64(img), encoding='utf-8')}"))
+        await cailiao.finish(MessageSegment.image(f"base64://{str(base64.b64encode(img_bytes), encoding='utf-8')}"))

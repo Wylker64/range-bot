@@ -4,6 +4,7 @@ from nonebot.adapters.onebot.v11 import Event, Bot, MessageSegment
 from src.libraries.image import *
 from src.libraries.secrets import maiapi_checker
 
+DEFAULT_PRIORITY = 5
 
 # @event_preprocessor
 # async def preprocessor(bot, event, state):
@@ -11,10 +12,10 @@ from src.libraries.secrets import maiapi_checker
 #         raise IgnoredException("not reply group temp message")
 
 help_str = '''最近更新：
-查歌，info，查牌子有了全新UI
-查牌子有了个等级谱面清谱进度
-查牌子修复了不同版本需要完成的曲目不正确的问题
-可能会有其他bug
+@bot 随机牛逼(抄的提比bot) -》 随机一个牛逼成绩（需要@bot触发）
+@bot 随机牛逼 <数量>(抄的提比bot) -》 随机牛逼成绩，最多10个（需要@bot触发）
+@bot 随机菜逼/随机丢人(抄的提比bot) -》 随机一个菜逼成绩（需要@bot触发）
+@bot 随机菜逼/随机丢人 <数量>(抄的提比bot) -》 随机菜逼成绩，最多10个（需要@bot触发）
 
 diving-fish功能：
 b40 b50 —》 查分
@@ -30,6 +31,7 @@ XXXmaimaiXXX什么 —》 随机一首歌
 分数线 <难度+歌曲id> <分数线> —》 详情请输入“分数线 帮助”查看
 
 其他maimai功能：
+<封面>是什么歌 —》 查询封面对应的乐曲 (需要手动将封面区域截出来，截的越精确查的越准确)
 谱师查歌 <谱师名字的一部分> -》 按谱师名字查歌
 曲师查歌 <曲师名字的一部分> -》 按曲师名字查歌
 新歌查歌 -》 按新歌列表查歌
@@ -38,6 +40,12 @@ bpm查歌 <bpm> 或 bpm查歌 <bpm上限> <bpm下限> -》 按bpm查歌
 <等级/版本>进度/完成表/完成度 -》 查询完成度，图片展示
 <等级>分数表/分数列表 -》 查询分数列表，文字展示
 apb50 -》 查分(只计算AP谱面)
+b50水分检测 -》 检测b50水分
+b50娱乐版 -》 按拟合定数生成b50
+@bot 随机牛逼(抄的提比bot) -》 随机一个牛逼成绩（需要@bot触发）
+@bot 随机牛逼 <数量>(抄的提比bot) -》 随机牛逼成绩，最多10个（需要@bot触发）
+@bot 随机菜逼/随机丢人(抄的提比bot) -》 随机一个菜逼成绩（需要@bot触发）
+@bot 随机菜逼/随机丢人 <数量>(抄的提比bot) -》 随机菜逼成绩，最多10个（需要@bot触发）
 
 info<歌曲id/歌曲名称> -》 查询该歌曲成绩
 
@@ -56,6 +64,15 @@ c谱师查歌 <谱师名字的一部分> -》 按谱师名字查歌
 c曲师查歌 <曲师名字的一部分> -》 按曲师名字查歌
 cbpm查歌 <bpm> 或 cbpm查歌 <bpm上限> <bpm下限> -》 按bpm查歌
 c版本查歌 <版本> -》 按版本查歌
+
+ongeki功能：
+o查歌 <乐曲标题的一部分> —》 查询符合条件的乐曲
+o曲师查歌 <曲师名字的一部分> -》 按曲师名字查歌
+o定数查歌 <定数> —》 查询定数对应的乐曲
+o定数查歌 <定数下限> <定数上限> —》 查询定数范围对应的乐曲
+今日音击/今日ongeki/今日o —》 查看今天的音击运势
+oid<歌曲编号> —》 查询乐曲信息或谱面信息
+
 
 Range功能：
 来个龙图/来张龙图 —》 随机龙图
@@ -81,7 +98,7 @@ help_b64str = f"base64://{str(image_to_base64(text_to_image(help_str)), encoding
 help_b64str_rg = f"base64://{str(image_to_base64(text_to_image(help_str_rg)), encoding='utf-8')}"
 
     
-help = on_command('help', priority = 5, block = True)
+help = on_command('help', priority = DEFAULT_PRIORITY, block = True)
 @help.handle()
 async def _(event: Event):
     if str(event.get_message()).strip() != "help":
@@ -92,7 +109,7 @@ async def _(event: Event):
     else:
         await help.finish(MessageSegment.image(help_b64str))
 
-help_rg = on_command('rghelp', priority = 5, block = True, rule = maiapi_checker)
+help_rg = on_command('rghelp', priority = DEFAULT_PRIORITY, block = True, rule = maiapi_checker)
 @help_rg.handle()
 async def _(event: Event):
     if str(event.get_message()).strip() != "rghelp":
