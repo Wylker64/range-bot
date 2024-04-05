@@ -9,3 +9,10 @@ src/libraries/secrets.py
 /.env
 event.json*
 .vscode
+/src/wylker/build
+*.xlsx
+*.xlsx
+/src/wylker/dist
+*.spec
+src/wylker/build/chunithm_luminous_parser/chunithm_luminous_parser.pkg
+*.pkg
